@@ -12,7 +12,7 @@ REGION = "eu-north-1"
 st.set_page_config(page_title="VARmageddon AI", page_icon="⚽")
 
 # Main Header with Football Emoji
-st.title("⚽ VARmageddon AI")
+st.title("⚽ VARmageddon AI ⚖️")
 
 # Subheader: Combining your new slogan with the original purpose
 st.subheader("Precision with extra sauce. Making football arguments scalable.")
