@@ -2,17 +2,22 @@ import streamlit as st
 import boto3
 import uuid
 
-# --- UPDATED VAR CONFIGURATION FOR STOCKHOLM ---
+# --- CONFIGURATION ---
 AGENT_ID = "THLFCHYCH4"
 AGENT_ALIAS_ID = "PEEURIASNU"
-REGION = "eu-north-1"  # Updated to Stockholm
+REGION = "eu-north-1" 
 
 # Page Styling
-st.set_page_config(page_title="VAR Oracle V2", page_icon="⚖️")
-st.title("⚖️ VAR-Oracle-V2")
-st.subheader("Official Laws of the Game Assistant (Stockholm Node)")
+# Using ⚽ for the browser tab icon
+st.set_page_config(page_title="VARmageddon AI", page_icon="⚽")
 
-# Initialize Session
+# Main Header with Football Emoji
+st.title("⚽ VARmageddon AI")
+
+# Subheader: Combining your new slogan with the original purpose
+st.subheader("The Ultimate Authority on the Laws of the Game. Making football arguments scalable.")
+
+# Initialize Session for Chat
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "session_id" not in st.session_state:
@@ -23,16 +28,21 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# User Input
-if prompt := st.chat_input("Describe the incident (e.g., handball, offside)..."):
+# User Input Box
+if prompt := st.chat_input("Enter the incident for a final ruling..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Calling Bedrock in Stockholm Region
-    client = boto3.client("bedrock-agent-runtime", region_name=REGION)
+    # Secure Connection using Streamlit Secrets
+    client = boto3.client(
+        "bedrock-agent-runtime",
+        region_name=REGION,
+        aws_access_key_id=st.secrets["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"]
+    )
     
-    with st.spinner("Consulting Rulebook..."):
+    with st.spinner("Consulting the Laws of the Game..."):
         try:
             response = client.invoke_agent(
                 agentId=AGENT_ID,
@@ -48,7 +58,7 @@ if prompt := st.chat_input("Describe the incident (e.g., handball, offside)...")
                     full_response += chunk.get("bytes").decode()
 
             if not full_response:
-                full_response = "The Oracle is analyzing the play. Please provide more detail."
+                full_response = "The VAR booth is reviewing the footage. Please rephrase your query."
 
             with st.chat_message("assistant"):
                 st.markdown(full_response)
@@ -56,4 +66,4 @@ if prompt := st.chat_input("Describe the incident (e.g., handball, offside)...")
 
         except Exception as e:
             st.error(f"VAR System Error: {str(e)}")
-            st.info("Tip: Ensure your Agent is 'Prepared' in the Stockholm (eu-north-1) AWS Console.")
+            st.info("System Tip: Check your AWS Secrets or ensure the Agent is 'Prepared' in Stockholm.")
