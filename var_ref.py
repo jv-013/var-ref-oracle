@@ -15,7 +15,7 @@ st.set_page_config(page_title="VARmageddon AI", page_icon="⚽")
 st.title("⚽ VARmageddon AI")
 
 # Subheader: Combining your new slogan with the original purpose
-st.subheader("The Ultimate Authority on the Laws of the Game. Making football arguments scalable.")
+st.subheader("Precision with extra sauce. Making football arguments scalable.")
 
 # Initialize Session for Chat
 if "messages" not in st.session_state:
