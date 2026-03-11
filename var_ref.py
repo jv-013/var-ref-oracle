@@ -13,8 +13,8 @@ REGION = "eu-north-1"
 st.set_page_config(page_title="VARmageddon AI", page_icon="⚽", layout="wide")
 
 # Professional Branding
-st.title("⚽ VARmageddon AI")
-st.markdown("### *Official Technical Support & Regulatory Analysis*")
+st.title("⚽ VARmageddon AI ⚖️")
+st.markdown("### *Making Football Arguments Scalable*")
 
 # --- DATA PERSISTENCE ---
 if "messages" not in st.session_state:
