@@ -7,34 +7,80 @@ AGENT_ID = "THLFCHYCH4"
 AGENT_ALIAS_ID = "PEEURIASNU"
 REGION = "eu-north-1" 
 
-# Page Styling
-# Using ⚽ for the browser tab icon
-st.set_page_config(page_title="VARmageddon AI", page_icon="⚽")
+st.set_page_config(page_title="VARmageddon AI", page_icon="⚽", layout="wide")
 
-# Main Header with Football Emoji
-st.title("⚽ VARmageddon AI ⚖️")
+st.title("⚽ VARmageddon AI")
+st.subheader("The Ultimate Authority on the Laws of the Game. Making football arguments scalable.")
 
-# Subheader: Combining your new slogan with the original purpose
-st.subheader("Precision with extra sauce. Making football arguments scalable.")
-
-# Initialize Session for Chat
+# --- SESSION STATE INITIALIZATION ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
+if "ledger" not in st.session_state:
+    st.session_state.ledger = []
 
-# Display Chat History
+# --- SIDEBAR: THE PRO TOOLS ---
+with st.sidebar:
+    st.header("🌍 Global Argument Settler")
+    language = st.selectbox(
+        "Select AI Output Language:",
+        ["English", "Spanish (Español)", "French (Français)", "German (Deutsch)", "Arabic (العربية)", "Italian (Italiano)"]
+    )
+    
+    st.divider()
+    
+    st.header("📒 Match Ledger")
+    st.write("Track incidents so the AI remembers the game context.")
+    
+    # Input to add events to the ledger
+    new_event = st.text_input("Log an event (e.g., 'Blue #7 - Yellow Card'):")
+    if st.button("Add to Ledger") and new_event:
+        st.session_state.ledger.append(new_event)
+        st.success(f"Logged: {new_event}")
+        
+    # Display the current ledger
+    if st.session_state.ledger:
+        st.write("**Current Match Events:**")
+        for i, event in enumerate(st.session_state.ledger, 1):
+            st.write(f"{i}. {event}")
+        if st.button("Clear Ledger"):
+            st.session_state.ledger = []
+            st.rerun()
+
+    st.divider()
+    
+    st.header("🎙️ Voice Command (Beta)")
+    audio_value = st.audio_input("Record incident")
+    if audio_value:
+        st.info("Audio received! (Note: Backend transcription API required to process voice to text).")
+
+# --- MAIN CHAT INTERFACE ---
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# User Input Box
 if prompt := st.chat_input("Enter the incident for a final ruling..."):
+    # Show user message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Secure Connection using Streamlit Secrets
+    # --- THE MAGIC: INJECTING CONTEXT & LANGUAGE ---
+    # We silently combine the Ledger, the Language, and the Prompt before sending it to AWS
+    ledger_context = "\n".join(st.session_state.ledger) if st.session_state.ledger else "No previous disciplinary events."
+    
+    enhanced_prompt = f"""
+    Current Match Context (Disciplinary Ledger):
+    {ledger_context}
+    
+    Incident to review:
+    {prompt}
+    
+    Please provide your final ruling and explanation strictly in {language}.
+    """
+
+    # Connect to AWS
     client = boto3.client(
         "bedrock-agent-runtime",
         region_name=REGION,
@@ -42,13 +88,13 @@ if prompt := st.chat_input("Enter the incident for a final ruling..."):
         aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"]
     )
     
-    with st.spinner("Consulting the Laws of the Game..."):
+    with st.spinner(f"Consulting the rules and translating to {language}..."):
         try:
             response = client.invoke_agent(
                 agentId=AGENT_ID,
                 agentAliasId=AGENT_ALIAS_ID,
                 sessionId=st.session_state.session_id,
-                inputText=prompt
+                inputText=enhanced_prompt
             )
             
             full_response = ""
@@ -66,4 +112,3 @@ if prompt := st.chat_input("Enter the incident for a final ruling..."):
 
         except Exception as e:
             st.error(f"VAR System Error: {str(e)}")
-            st.info("System Tip: Check your AWS Secrets or ensure the Agent is 'Prepared' in Stockholm.")
