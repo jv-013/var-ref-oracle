@@ -1,6 +1,9 @@
 import streamlit as st
 import boto3
 import uuid
+import speech_recognition as sr
+from pydub import AudioSegment
+import io
 
 # --- CONFIGURATION ---
 AGENT_ID = "THLFCHYCH4"
@@ -9,78 +12,86 @@ REGION = "eu-north-1"
 
 st.set_page_config(page_title="VARmageddon AI", page_icon="⚽", layout="wide")
 
+# Main Header
 st.title("⚽ VARmageddon AI")
-st.subheader("The Ultimate Authority on the Laws of the Game. Making football arguments scalable.")
+st.subheader("The Ultimate Multi-League Authority. Making football arguments scalable.")
 
-# --- SESSION STATE INITIALIZATION ---
+# --- SESSION STATE ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 if "ledger" not in st.session_state:
     st.session_state.ledger = []
+if "voice_text" not in st.session_state:
+    st.session_state.voice_text = ""
 
-# --- SIDEBAR: THE PRO TOOLS ---
+# --- SIDEBAR: PRO TOOLS ---
 with st.sidebar:
     st.header("🌍 Global Argument Settler")
     language = st.selectbox(
-        "Select AI Output Language:",
-        ["English", "Spanish (Español)", "French (Français)", "German (Deutsch)", "Arabic (العربية)", "Italian (Italiano)"]
+        "AI Output Language:",
+        ["English", "Spanish", "French", "German", "Arabic", "Italian", "Portuguese"]
     )
     
     st.divider()
     
     st.header("📒 Match Ledger")
-    st.write("Track incidents so the AI remembers the game context.")
-    
-    # Input to add events to the ledger
-    new_event = st.text_input("Log an event (e.g., 'Blue #7 - Yellow Card'):")
-    if st.button("Add to Ledger") and new_event:
-        st.session_state.ledger.append(new_event)
-        st.success(f"Logged: {new_event}")
-        
-    # Display the current ledger
+    st.info("Log incidents here so the AI remembers the game context.")
+    event_input = st.text_input("New Event (e.g. 'Red #10 Yellow Card'):")
+    if st.button("Log Event") and event_input:
+        st.session_state.ledger.append(event_input)
+        st.success(f"Added: {event_input}")
+
     if st.session_state.ledger:
-        st.write("**Current Match Events:**")
-        for i, event in enumerate(st.session_state.ledger, 1):
-            st.write(f"{i}. {event}")
+        st.write("**Current Ledger:**")
+        for i, item in enumerate(st.session_state.ledger, 1):
+            st.write(f"{i}. {item}")
         if st.button("Clear Ledger"):
             st.session_state.ledger = []
             st.rerun()
 
     st.divider()
+    st.header("🎙️ Voice Command")
+    audio_value = st.audio_input("Speak Incident")
     
-    st.header("🎙️ Voice Command (Beta)")
-    audio_value = st.audio_input("Record incident")
     if audio_value:
-        st.info("Audio received! (Note: Backend transcription API required to process voice to text).")
+        try:
+            # Convert the audio stream to WAV so the 'Ear' can read it
+            audio_segment = AudioSegment.from_file(io.BytesIO(audio_value.read()))
+            wav_io = io.BytesIO()
+            audio_segment.export(wav_io, format="wav")
+            wav_io.seek(0)
 
-# --- MAIN CHAT INTERFACE ---
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(wav_io) as source:
+                audio_data = recognizer.record(source)
+                # Use Google's Speech API (Free)
+                text = recognizer.recognize_google(audio_data)
+                st.session_state.voice_text = text
+                st.success(f"Heard: '{text}'")
+        except Exception as e:
+            st.error("Audio error: Please ensure you are not using the Instagram browser.")
+
+# --- CHAT INTERFACE ---
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if prompt := st.chat_input("Enter the incident for a final ruling..."):
-    # Show user message
+# Logic to catch input from either the keyboard or the voice success button
+prompt = st.chat_input("Ask about a UCL, PL, or IFAB incident...")
+
+if st.session_state.voice_text:
+    if st.button(f"Submit Voice Command: '{st.session_state.voice_text}'"):
+        prompt = st.session_state.voice_text
+        st.session_state.voice_text = "" # Clear it for the next one
+
+if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # --- THE MAGIC: INJECTING CONTEXT & LANGUAGE ---
-    # We silently combine the Ledger, the Language, and the Prompt before sending it to AWS
-    ledger_context = "\n".join(st.session_state.ledger) if st.session_state.ledger else "No previous disciplinary events."
-    
-    enhanced_prompt = f"""
-    Current Match Context (Disciplinary Ledger):
-    {ledger_context}
-    
-    Incident to review:
-    {prompt}
-    
-    Please provide your final ruling and explanation strictly in {language}.
-    """
-
-    # Connect to AWS
+    # AWS CONNECTION
     client = boto3.client(
         "bedrock-agent-runtime",
         region_name=REGION,
@@ -88,27 +99,33 @@ if prompt := st.chat_input("Enter the incident for a final ruling..."):
         aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"]
     )
     
-    with st.spinner(f"Consulting the rules and translating to {language}..."):
+    # Bundle everything for the AI
+    ledger_str = ", ".join(st.session_state.ledger) if st.session_state.ledger else "None"
+    full_prompt = f"""
+    MATCH CONTEXT (Previous events): {ledger_str}
+    NEW QUERY: {prompt}
+    INSTRUCTION: Answer using the Knowledge Base (IFAB, UCL, PL, etc). 
+    LANGUAGE: Provide the final ruling strictly in {language}.
+    """
+
+    with st.spinner(f"VAR is checking the booth in {language}..."):
         try:
             response = client.invoke_agent(
                 agentId=AGENT_ID,
                 agentAliasId=AGENT_ALIAS_ID,
                 sessionId=st.session_state.session_id,
-                inputText=enhanced_prompt
+                inputText=full_prompt
             )
             
-            full_response = ""
+            answer = ""
             for event in response.get("completion"):
                 chunk = event.get("chunk")
                 if chunk:
-                    full_response += chunk.get("bytes").decode()
-
-            if not full_response:
-                full_response = "The VAR booth is reviewing the footage. Please rephrase your query."
+                    answer += chunk.get("bytes").decode()
 
             with st.chat_message("assistant"):
-                st.markdown(full_response)
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                st.markdown(answer)
+                st.session_state.messages.append({"role": "assistant", "content": answer})
 
         except Exception as e:
             st.error(f"VAR System Error: {str(e)}")
