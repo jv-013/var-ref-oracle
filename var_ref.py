@@ -105,16 +105,18 @@ if prompt:
     )
     
     # THE MAGIC INSTRUCTION
-    ledger_str = ", ".join(st.session_state.ledger) if st.session_state.ledger else "No previous disciplinary records."
-    full_prompt = f"""
+   full_prompt = f"""
     Match Ledger: {ledger_str}
     Current Incident: {prompt}
     Target Output Language: {language}
     
-    CRITICAL INSTRUCTION: If your ruling results in a Yellow Card or Red Card for a specific player, you MUST append a tracking tag at the very bottom of your response in this exact format:
+    CRITICAL INSTRUCTIONS:
+    1. Answer the query directly using ONLY the provided Knowledge Base documents.
+    2. DO NOT use XML tags, HTML tags, or internal system formatting (like <user__askuser>). Speak in plain, conversational {language}. If you need clarification, ask in plain text.
+    3. If your ruling results in a Yellow Card or Red Card for a specific player, you MUST append a tracking tag at the very bottom of your response in this exact format:
     [LOG: Team/Player - Card Type]
     Example: [LOG: Blue #10 - Yellow Card]
-    If no card is given, do not output the tag.
+    If no card is given, do not output the log tag.
     """
 
     with st.status("Analyzing official regulations...", expanded=False) as status:
