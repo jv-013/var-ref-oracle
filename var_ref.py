@@ -12,9 +12,8 @@ REGION = "eu-north-1"
 
 st.set_page_config(page_title="VARmageddon AI", page_icon="⚽", layout="wide")
 
-# Main Header
 st.title("⚽ VARmageddon AI")
-st.subheader("The Ultimate Multi-League Authority. Making football arguments scalable.")
+st.subheader("Automated Match Official Intelligence")
 
 # --- SESSION STATE ---
 if "messages" not in st.session_state:
@@ -26,65 +25,64 @@ if "ledger" not in st.session_state:
 if "voice_text" not in st.session_state:
     st.session_state.voice_text = ""
 
-# --- SIDEBAR: PRO TOOLS ---
+# --- SIDEBAR: MATCH TOOLS ---
 with st.sidebar:
-    st.header("🌍 Global Argument Settler")
+    st.header("🌍 Output Language")
     language = st.selectbox(
-        "AI Output Language:",
+        "Select Language:",
         ["English", "Spanish", "French", "German", "Arabic", "Italian", "Portuguese"]
     )
     
     st.divider()
     
     st.header("📒 Match Ledger")
-    st.info("Log incidents here so the AI remembers the game context.")
-    event_input = st.text_input("New Event (e.g. 'Red #10 Yellow Card'):")
-    if st.button("Log Event") and event_input:
+    event_input = st.text_input("Log Match Event:", placeholder="e.g. Red #10 Yellow Card")
+    if st.button("Commit Event") and event_input:
         st.session_state.ledger.append(event_input)
-        st.success(f"Added: {event_input}")
+        st.success(f"Event Logged: {event_input}")
 
     if st.session_state.ledger:
-        st.write("**Current Ledger:**")
+        st.write("**Active Match Context:**")
         for i, item in enumerate(st.session_state.ledger, 1):
             st.write(f"{i}. {item}")
-        if st.button("Clear Ledger"):
+        if st.button("Reset Ledger"):
             st.session_state.ledger = []
             st.rerun()
 
     st.divider()
-    st.header("🎙️ Voice Command")
-    audio_value = st.audio_input("Speak Incident")
+    st.header("🎙️ Voice Input")
+    audio_value = st.audio_input("Record Match Incident")
     
     if audio_value:
-        try:
-            # Convert the audio stream to WAV so the 'Ear' can read it
-            audio_segment = AudioSegment.from_file(io.BytesIO(audio_value.read()))
-            wav_io = io.BytesIO()
-            audio_segment.export(wav_io, format="wav")
-            wav_io.seek(0)
+        with st.status("Transcribing audio...", expanded=False):
+            try:
+                # Process audio through pydub and speech_recognition
+                audio_segment = AudioSegment.from_file(io.BytesIO(audio_value.read()))
+                wav_io = io.BytesIO()
+                audio_segment.export(wav_io, format="wav")
+                wav_io.seek(0)
 
-            recognizer = sr.Recognizer()
-            with sr.AudioFile(wav_io) as source:
-                audio_data = recognizer.record(source)
-                # Use Google's Speech API (Free)
-                text = recognizer.recognize_google(audio_data)
-                st.session_state.voice_text = text
-                st.success(f"Heard: '{text}'")
-        except Exception as e:
-            st.error("Audio error: Please ensure you are not using the Instagram browser.")
+                recognizer = sr.Recognizer()
+                with sr.AudioFile(wav_io) as source:
+                    audio_data = recognizer.record(source)
+                    text = recognizer.recognize_google(audio_data)
+                    st.session_state.voice_text = text
+                    st.write(f"Transcription: {text}")
+            except Exception:
+                st.error("Transcription Error: Audio processing failed. Please ensure clear input.")
 
-# --- CHAT INTERFACE ---
+# --- MAIN INTERFACE ---
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Logic to catch input from either the keyboard or the voice success button
-prompt = st.chat_input("Ask about a UCL, PL, or IFAB incident...")
+prompt = st.chat_input("Enter incident details for review...")
 
+# Voice Command Submission
 if st.session_state.voice_text:
-    if st.button(f"Submit Voice Command: '{st.session_state.voice_text}'"):
+    if st.button("Confirm Voice Input"):
         prompt = st.session_state.voice_text
-        st.session_state.voice_text = "" # Clear it for the next one
+        st.session_state.voice_text = "" 
 
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -99,16 +97,10 @@ if prompt:
         aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"]
     )
     
-    # Bundle everything for the AI
-    ledger_str = ", ".join(st.session_state.ledger) if st.session_state.ledger else "None"
-    full_prompt = f"""
-    MATCH CONTEXT (Previous events): {ledger_str}
-    NEW QUERY: {prompt}
-    INSTRUCTION: Answer using the Knowledge Base (IFAB, UCL, PL, etc). 
-    LANGUAGE: Provide the final ruling strictly in {language}.
-    """
+    ledger_str = ", ".join(st.session_state.ledger) if st.session_state.ledger else "No previous events."
+    full_prompt = f"Match Context: {ledger_str}\nIncident: {prompt}\nLanguage: {language}"
 
-    with st.spinner(f"VAR is checking the booth in {language}..."):
+    with st.spinner("Analyzing regulations..."):
         try:
             response = client.invoke_agent(
                 agentId=AGENT_ID,
@@ -126,6 +118,5 @@ if prompt:
             with st.chat_message("assistant"):
                 st.markdown(answer)
                 st.session_state.messages.append({"role": "assistant", "content": answer})
-
         except Exception as e:
-            st.error(f"VAR System Error: {str(e)}")
+            st.error(f"System Error: Connection to AWS Bedrock failed.")
