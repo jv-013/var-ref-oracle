@@ -4,6 +4,7 @@ import uuid
 import speech_recognition as sr
 from pydub import AudioSegment
 import io
+import re
 
 # --- SYSTEM CONFIGURATION ---
 AGENT_ID = "THLFCHYCH4"
@@ -13,7 +14,7 @@ REGION = "eu-north-1"
 st.set_page_config(page_title="VARmageddon AI", page_icon="⚽", layout="wide")
 
 # Professional Branding
-st.title("⚽ VARmageddon AI ⚖️")
+st.title("⚽ VARmageddon AI")
 st.markdown("### *Making Football Arguments Scalable*")
 
 # --- DATA PERSISTENCE ---
@@ -36,32 +37,27 @@ with st.sidebar:
     
     st.divider()
     
+    # AUTOMATED LEDGER UI (No more manual input!)
     st.header("📒 Match Ledger")
-    st.caption("Record disciplinary actions for contextual accuracy.")
-    event_input = st.text_input("Enter Match Event:", placeholder="e.g. Red #10 Yellow Card - Unsporting Behavior")
+    st.caption("Disciplinary actions are now tracked automatically by the AI.")
     
-    if st.button("Commit Event", use_container_width=True) and event_input:
-        st.session_state.ledger.append(event_input)
-        st.toast(f"Event Logged: {event_input}")
-
     if st.session_state.ledger:
         st.write("**Active Context Ledger:**")
         for i, item in enumerate(st.session_state.ledger, 1):
-            st.info(f"{i}. {item}")
+            st.warning(f"{i}. {item}")
         if st.button("Reset Session Ledger", use_container_width=True):
             st.session_state.ledger = []
             st.rerun()
+    else:
+        st.info("No disciplinary events logged yet.")
 
     st.divider()
     
     st.header("🎙️ Voice Entry")
-    st.caption("Record incident details for automated transcription.")
-    # Unique key helps reset the widget state after use
     audio_value = st.audio_input("Record Audio", key="match_audio_recorder")
     
     if audio_value:
         try:
-            # Process audio only if voice_text is currently empty to prevent loops
             if not st.session_state.voice_text:
                 audio_segment = AudioSegment.from_file(io.BytesIO(audio_value.read()))
                 wav_io = io.BytesIO()
@@ -75,7 +71,6 @@ with st.sidebar:
                     st.session_state.voice_text = text
                     st.rerun()
         except Exception:
-            # Silently handle the widget's internal timeout; the logic already has the data
             pass
 
 # --- MAIN COMMUNICATION INTERFACE ---
@@ -83,10 +78,8 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Primary input field
 prompt = st.chat_input("Enter incident details for regulatory review...")
 
-# Voice Input Confirmation Logic
 if st.session_state.voice_text:
     st.warning(f"**Transcription Detected:** {st.session_state.voice_text}")
     col1, col2 = st.columns(2)
@@ -104,7 +97,6 @@ if prompt:
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # SECURE CONNECTION TO REGULATORY DATABASE
     client = boto3.client(
         "bedrock-agent-runtime",
         region_name=REGION,
@@ -112,8 +104,18 @@ if prompt:
         aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"]
     )
     
+    # THE MAGIC INSTRUCTION
     ledger_str = ", ".join(st.session_state.ledger) if st.session_state.ledger else "No previous disciplinary records."
-    full_prompt = f"Match Ledger: {ledger_str}\nCurrent Incident: {prompt}\nTarget Output Language: {language}"
+    full_prompt = f"""
+    Match Ledger: {ledger_str}
+    Current Incident: {prompt}
+    Target Output Language: {language}
+    
+    CRITICAL INSTRUCTION: If your ruling results in a Yellow Card or Red Card for a specific player, you MUST append a tracking tag at the very bottom of your response in this exact format:
+    [LOG: Team/Player - Card Type]
+    Example: [LOG: Blue #10 - Yellow Card]
+    If no card is given, do not output the tag.
+    """
 
     with st.status("Analyzing official regulations...", expanded=False) as status:
         try:
@@ -131,8 +133,24 @@ if prompt:
                     answer += chunk.get("bytes").decode()
 
             status.update(label="Analysis Complete", state="complete")
+            
+            # --- THE AUTO-EXTRACTOR ---
+            # Search the AI's answer for our secret [LOG: ...] tag
+            match = re.search(r'\[LOG:\s*(.*?)\]', answer)
+            if match:
+                new_event = match.group(1)
+                st.session_state.ledger.append(new_event) # Save it to the sidebar automatically
+                st.toast(f"VAR Auto-Logged: {new_event}") # Pop up a nice notification
+                # Erase the tag from the text so the user doesn't see the robot language
+                answer = re.sub(r'\[LOG:\s*(.*?)\]', '', answer).strip()
+
             with st.chat_message("assistant"):
                 st.markdown(answer)
                 st.session_state.messages.append({"role": "assistant", "content": answer})
+                
+            # If we found a tag, rerun to instantly update the sidebar visuals
+            if match:
+                st.rerun()
+
         except Exception as e:
             st.error("System Error: Regulatory database connection timeout.")
